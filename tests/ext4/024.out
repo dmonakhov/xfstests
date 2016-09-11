@@ -1,0 +1,7 @@
+QA output created by 024
+
+ Start defragment stress test
+
+ Check filesystem health
+wrote 4096/4096 bytes at offset 0
+XXX Bytes, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)

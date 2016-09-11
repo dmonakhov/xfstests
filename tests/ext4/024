@@ -1,0 +1,107 @@
+#! /bin/bash
+# FSQA Test No. 024
+#
+# Ext4 defragmentation stress test
+# Defragment file while other task does buffered io and truncate file
+# Regression test for preallocation leak
+#-----------------------------------------------------------------------
+# (c) 2016 Dmitry Monakhov
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it would be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write the Free Software Foundation,
+# Inc.,  51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+#
+#-----------------------------------------------------------------------
+#
+
+seq=`basename $0`
+seqres=$RESULT_DIR/$seq
+echo "QA output created by $seq"
+
+here=`pwd`
+tmp=/tmp/$$
+status=1        # failure is the default!
+trap "rm -f $tmp.*; exit \$status" 0 1 2 3 15
+rm -f $seqres.full
+
+# get standard environment, filters and checks
+. ./common/rc
+. ./common/filter
+. ./common/defrag
+
+# real QA test starts here
+_supported_os Linux
+_supported_fs ext4
+_require_scratch
+_require_defrag
+_require_odirect
+
+# tas1 [e4defrag] perform defragmentation loop
+# tsk2 [truncate] perform ftcundate in a loop
+# tsk3 [random-aio-4k] pefrorm random io in a loop
+fio_cmd="\
+        --directory=$SCRATCH_MNT \
+        --filesize=100M \
+        --size=999G \
+        --time_based=1 \
+        --runtime=10 \
+        --name=defrag \
+        --ioengine=e4defrag \
+        --ignore_error=,EINVAL:EBUSY:61 \
+        --bs=100M \
+        --buffered=0 \
+        --rw=write \
+        --rate_iops=10 \
+        --filename=testfile \
+        --donorname=file.def \
+        --inplace=1 \
+        --name=truncate \
+        --ioengine=ftruncate \
+        --rw=randwrite \
+        --rate_iops=10 \
+        --filename=testfile \
+        --name=random-aio-4k \
+        --ioengine=libaio \
+        --buffered=1 \
+        --bs=4k \
+        --iodepth=32 \
+        --rw=randwrite \
+        --fsync=100 \
+        --filename=testfile"
+_require_fio $fio_cmd
+
+_workout()
+{
+        echo ""
+        echo " Start defragment stress test"
+        echo ""
+        run_check $FIO_PROG $fio_cmd
+        echo " Check filesystem health"
+        $XFS_IO_PROG -f $SCRATCH_MNT/test-ro \
+                     -c "pwrite 0 4k" -c "fsync"  | _filter_xfs_io
+}
+
+
+_scratch_mkfs_ext4 -e remount-ro  >> $seqres.full 2>&1
+_scratch_mount
+
+if ! _workout; then
+        _scratch_unmount 2>/dev/null
+        exit
+fi
+
+if ! _scratch_unmount; then
+        echo "failed to umount"
+        status=1
+        exit
+fi
+status=0
