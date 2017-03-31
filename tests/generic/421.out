@@ -1,0 +1,33 @@
+QA output created by 421
+Run: dif-type1-w
+T0: Test basic IO
+Check that buffered and direct read works
+d4dacb57332e9125d56a0bad5fbfb8ff  -
+d4dacb57332e9125d56a0bad5fbfb8ff  -
+Check csum corruption detection
+T1: Corrupt guard_tag, next read should fail
+T2: Check that unaffected blocks are still readable
+T3: Rewrite corrupted sector and check that read works
+T4: Corrupt app_tag, should not affect read
+T5: Corrupt ref_tag, next read should fail
+T6: Check that unaffected blocks are still readable
+T7: Rewrite corrupted sector and check that read works
+Check that buffered and direct read works
+d4dacb57332e9125d56a0bad5fbfb8ff  -
+d4dacb57332e9125d56a0bad5fbfb8ff  -
+Run: dif-type1-wo
+T0: Test basic IO
+Check that buffered and direct read works
+d4dacb57332e9125d56a0bad5fbfb8ff  -
+d4dacb57332e9125d56a0bad5fbfb8ff  -
+Check csum corruption detection
+T1: Corrupt guard_tag, next read should fail
+T2: Check that unaffected blocks are still readable
+T3: Rewrite corrupted sector and check that read works
+T4: Corrupt app_tag, should not affect read
+T5: Corrupt ref_tag, next read should fail
+T6: Check that unaffected blocks are still readable
+T7: Rewrite corrupted sector and check that read works
+Check that buffered and direct read works
+d4dacb57332e9125d56a0bad5fbfb8ff  -
+d4dacb57332e9125d56a0bad5fbfb8ff  -
