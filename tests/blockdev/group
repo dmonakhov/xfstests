@@ -4,3 +4,4 @@
 # - comment line before each group is "new" description
 #
 001 rw blockdev
+002 rw blockdev liotarget
