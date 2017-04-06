@@ -7,3 +7,4 @@
 002 rw blockdev liotarget
 003 rw blockdev liotarget integrity dangerous
 004 rw blockdev dangerous zero
+005 rw blockdev dangerous zero

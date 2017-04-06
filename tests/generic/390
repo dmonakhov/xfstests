@@ -55,6 +55,7 @@ _supported_os Linux
 _require_scratch
 _require_freeze
 _require_test_program "feature"
+_require_command "$KILLALL_PROG" killall
 
 _scratch_mkfs >>$seqres.full 2>&1
 # We don't want to freeze/unfreeze root fs if mount scratch dev failed
