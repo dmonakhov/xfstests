@@ -1,0 +1,87 @@
+#! /bin/bash
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (c) 2019 YANDEX LLC.  All Rights Reserved.
+#
+# FS QA Test 586
+#
+# Stress quotasync while other tasks dirty quotas in parallel.
+# Run fchown(2) in a loop is the fastest way to produce dirty quotas
+#
+seq=`basename $0`
+seqres=$RESULT_DIR/$seq
+echo "QA output created by $seq"
+
+here=`pwd`
+tmp=/tmp/$$
+status=1	# failure is the default!
+trap "_cleanup; exit \$status" 0 1 2 3 15
+
+_cleanup()
+{
+	cd /
+	rm -f $tmp.*
+}
+# get standard environment, filters and checks
+. ./common/rc
+. ./common/filter
+. ./common/quota
+
+
+
+
+# real QA test starts here
+_supported_fs generic
+_supported_os Linux
+_require_quota
+_require_scratch
+_require_check_dmesg
+
+nr_proc=$((32 * LOAD_FACTOR))
+runtime=$((60 * TIME_FACTOR))
+
+rm -f $seqres.full
+_scratch_mkfs_sized $((512 * 1024 * 1024)) >> $seqres.full 2>&1
+_scratch_mount "-o quota,user"
+chmod 777 $SCRATCH_MNT
+quotacheck -u $SCRATCH_MNT 2>/dev/null
+quotaon -v -u $SCRATCH_MNT >> $seqres.full 2>&1
+
+# Preparation step: Create all files with uid in range
+# to cache quota in kernel memory
+#mkdir -p $SCRATCH_MNT/q
+#$here/src/chowner $SCRATCH_MNT/q -b 2000 -e 2010 -P
+
+for ((i=0; i < nr_proc; i++))
+do
+    # Spread files to isolated dirs to minimize locking contention
+    mkdir -p $SCRATCH_MNT/chowner/$i
+    # Performs fchown in small uid range [2019,2042] in order stress
+    # quota code
+    $here/src/chowner $SCRATCH_MNT/chowner/$i/test -b 2019 -e 2042 \
+		      -t $((runtime)) &
+    pids="$pids $!"
+done
+
+start=$(date +%s)
+deadline=$((start + runtime))
+i=0
+while true
+do
+    quotasync -u $SCRATCH_MNT
+    now=$(date +%s)
+    [ $now -le $deadline ] || break
+    i=$((i+1))
+done
+echo "Done after $i loops" >> $seqres.full
+
+kill -TERM $pids 2> /dev/null
+wait $pids
+
+# Check for error message that happed due to quota inconsistency
+# Example messages:
+#  "Quota error (device vdb): dqput: Can't write quota structure (error -5). Quota may get out of sync!"
+_dmesg_since_test_start | egrep -e 'Quota error '
+echo "Silence is golden"
+# success, all done
+status=0
+exit
