@@ -1,0 +1,94 @@
+#! /bin/bash
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (c) 2019 YANDEX LLC.  All Rights Reserved.
+#
+# FS QA Test 585
+#
+# Check livelock during quota-sync  while other tasks dirty quotas in parallel.
+# Run fchown(2) in a loop is the fastest way to produce dirty quotas
+#
+seq=`basename $0`
+seqres=$RESULT_DIR/$seq
+echo "QA output created by $seq"
+
+here=`pwd`
+tmp=/tmp/$$
+status=1	# failure is the default!
+trap "_cleanup; exit \$status" 0 1 2 3 15
+
+_cleanup()
+{
+	cd /
+	rm -f $tmp.*
+}
+# get standard environment, filters and checks
+. ./common/rc
+. ./common/filter
+. ./common/quota
+
+
+begin=2000
+end=10000
+nr_proc=$((16 * LOAD_FACTOR))
+deadline=$((100 * TIME_FACTOR))
+
+_workout()
+{
+    for ((i=0; i < nr_proc; i++))
+    do
+	# Spread files to isolated dirs to minimize locking contention
+	mkdir -p $SCRATCH_MNT/chowner/$i
+	$here/src/chowner $SCRATCH_MNT/chowner/$i/test -b $begin -e $end \
+			  -t $((deadline + 10)) &
+	pids="$pids $!"
+    done
+    # Let chowners warm up ...
+    sleep 5
+    start=$(date +%s)
+    for ((i=0;i<3;i++))
+    do
+	s=$(date +%s)
+	# In normal situation command should finish in ~1sec,
+	# but in case of livelock it will spin until chowners exits
+	$*
+	e=$(date +%s)
+	echo "loop $i: $* runtime: $((e-s))" >> $seqres.full
+	sleep 2
+    done
+    end=$(date +%s)
+    runtime=$((end-start))
+    echo "DONE: $* total runtime: $runtime"  >> $seqres.full
+    kill -TERM $pids 2> /dev/null
+    wait $pids
+
+    [ $runtime -le $deadline ] || \
+	_fail "Live lock detected, $* runtime: $runtime, deadline: $deadline"
+}
+
+# real QA test starts here
+_supported_fs generic
+_supported_os Linux
+_require_quota
+#_require_user
+_require_scratch
+_require_command "$KILLALL_PROG" killall
+
+rm -f $seqres.full
+_scratch_mkfs_sized $((512 * 1024 * 1024)) >> $seqres.full 2>&1
+_scratch_mount "-o quota,user"
+chmod 777 $SCRATCH_MNT
+quotacheck -u $SCRATCH_MNT 2>/dev/null
+quotaon -v -u $SCRATCH_MNT >> $seqres.full 2>&1
+
+# Preparation step: Create all files with uid in range
+# to cache quota in kernel memory
+mkdir -p $SCRATCH_MNT/q
+$here/src/chowner $SCRATCH_MNT/q -b $begin -e $end -P
+
+_workout quotasync $SCRATCH_MNT
+_workout sync
+
+echo "Silence is golden"
+# success, all done
+status=0
+exit
